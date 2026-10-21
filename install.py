@@ -3,6 +3,7 @@
 
 Запуск:   python3 install.py            (або подвійний клік на install.command / install.bat)
 Ключі:    --host 192.168.1.50   адреса ТВ, щоб не питати
+          --launcher original   оригінальний лаунчер CleanYourTV замість Sun Home (типово питає)
           --apk launcher.apk    свій APK замість завантаження з релізу на GitHub
           --skip-debloat        нічого не вимикати, лише поставити лаунчер
 
@@ -11,7 +12,8 @@
   2. знаходить ТВ у мережі й підключається (на ТВ треба дозволити налагодження);
   3. зберігає бекап: список пакетів, налаштування, getprop;
   4. показує, що можна вимкнути, і вимикає лише вибране (pm disable-user, нічого не видаляється);
-  5. ставить лаунчер Sun Home головним екраном і місто для теми за сонцем;
+  5. ставить вибраний лаунчер (Sun Home або оригінальний CleanYourTV) головним екраном, для Sun Home — і
+     місто для теми за сонцем;
   6. пише, як усе повернути (tools/restore.sh з тим самим списком).
 
 Ключові кроки виконують перевірені скрипти репозиторію (tools/disable.sh, launcher/build-and-install.sh,
@@ -350,12 +352,36 @@ def download(url, path=None):
     return data
 
 
-def launcher_apk(apk_arg):
+LAUNCHERS = {
+    "sunhome": ("Sun Home", "sun-home.apk",
+                "тема за сонцем, перекидний годинник, меню Wi-Fi, українська; круглі кнопки, док у смузі"),
+    "original": ("Оригінальний CleanYourTV", "cleanyourtv-original.apk",
+                 "лаунчер автора Gathin23 без змін: чорний фон, назва застосунку над доком, пілюлі-кнопки"),
+}
+
+
+def pick_launcher(arg):
+    if arg:
+        return arg
+    say("\nЯкий лаунчер поставити?")
+    keys = list(LAUNCHERS)
+    for i, k in enumerate(keys, 1):
+        name, _, about = LAUNCHERS[k]
+        say(f"  {i}. {name} — {about}")
+    while True:
+        n = ask("Номер:", "1")
+        if n.isdigit() and 1 <= int(n) <= len(keys):
+            return keys[int(n) - 1]
+        say("Не зрозумів, спробуй ще.")
+
+
+def launcher_apk(apk_arg, launcher="sunhome"):
     if apk_arg:
         return os.path.abspath(apk_arg)
-    say("Завантажую лаунчер з останнього релізу на GitHub…")
+    name, file_name, _ = LAUNCHERS[launcher]
+    say(f"Завантажую {name} з останнього релізу на GitHub…")
     release = json.loads(download(RELEASES))
-    asset = next(a for a in release["assets"] if a["name"].endswith(".apk"))
+    asset = next(a for a in release["assets"] if a["name"] == file_name)
     path = os.path.join(tempfile.gettempdir(), asset["name"])
     download(asset["browser_download_url"], path)
     say(f"Лаунчер {release.get('tag_name', '')}: {asset['name']}")
@@ -392,6 +418,7 @@ def main():
     parser.add_argument("--host")
     parser.add_argument("--apk")
     parser.add_argument("--skip-debloat", action="store_true")
+    parser.add_argument("--launcher", choices=sorted(LAUNCHERS), help="sunhome (типово) або original")
     args = parser.parse_args()
 
     bootstrap()
@@ -407,16 +434,19 @@ def main():
         packages = []
     lst = debloat(host, folder, packages, props)
 
-    city = pick_city()
-    if not yes("Поставити лаунчер Sun Home головним екраном?"):
+    launcher = pick_launcher(args.launcher)
+    city = pick_city() if launcher == "sunhome" else None
+    if not yes(f"Поставити {LAUNCHERS[launcher][0]} головним екраном?"):
         sys.exit("Зупинився перед лаунчером. Вимкнене повертається командою з RESTORE.txt.")
-    apk = launcher_apk(args.apk)
+    apk = launcher_apk(args.apk, launcher)
     code = script(host, os.path.join("launcher", "build-and-install"), extra_env={"PREBUILT_APK": apk})
     if code != 0:
         sys.exit("Лаунчер не став головним екраном (деталі вище); стоковий лаунчер лишився.")
-    push_city(host, city)
+    if city:
+        push_city(host, city)
 
-    say(f"\nГотово. Місто: {city[0]}. Як усе повернути: {os.path.relpath(restore, ROOT)}")
+    say(f"\nГотово: {LAUNCHERS[launcher][0]}" + (f", місто: {city[0]}" if city else "")
+        + f". Як усе повернути: {os.path.relpath(restore, ROOT)}")
     say("Коли закінчиш, вимкни на ТВ «Налагодження USB» і «Налагодження по мережі»: порт 5555 не варто "
         "лишати відкритим.")
 
