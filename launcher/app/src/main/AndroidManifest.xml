@@ -7,6 +7,10 @@
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
+    <!-- Sun Home: uafix history from its sync server and TMDB stills, only while Home opens. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Sun Home: the Watch Next row (Netflix's continue watching), when the system shares it. -->
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Needed since Android 10 to read the Wi-Fi network name for the network pill. Never requested at

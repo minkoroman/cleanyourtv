@@ -13,6 +13,16 @@ android {
         targetSdk 34
         versionCode 6
         versionName '2.5'
+        // Sun Home keys from launcher/local.properties (git-ignored); empty turns that source off.
+        def local = new Properties()
+        def localFile = rootProject.file('local.properties')
+        if (localFile.exists()) localFile.withInputStream { local.load(it) }
+        buildConfigField 'String', 'UAFIX_SYNC_CODE', '"' + local.getProperty('uafix.syncCode', '') + '"'
+        buildConfigField 'String', 'TMDB_TOKEN', '"' + local.getProperty('tmdb.token', '') + '"'
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -45,4 +55,6 @@ dependencies {
     implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
     // Test only (never in the APK): plain JVM tests for the module card validators, src/test.
     testImplementation 'junit:junit:4.13.2'
+    // Android's own org.json is a stub on the JVM; the real one for the Sun Home parser tests.
+    testImplementation 'org.json:json:20240303'
 }

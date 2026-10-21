@@ -1,5 +1,16 @@
 package com.gathin.tvhome;
 
+import android.view.ViewTreeObserver;
+import java.net.Inet4Address;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.wifi.ScanResult;
+import android.util.Log;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import android.graphics.drawable.StateListDrawable;
+import android.content.res.ColorStateList;
+import java.time.ZoneId;
+import java.time.LocalDateTime;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
@@ -161,6 +172,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private String greetingName = "";
     /** Optional time-of-day backdrop (config.xml, sky_intensity); 0 keeps it hidden. */
     private SkyView sky;
+    private DockDecoration dockDecoration;
+    /** Sun Home: where the sun is reckoned from (config.xml sun_lat, sun_lon). */
+    private double sunLat, sunLon;
+    private Palette palette;
+    private Boolean night;
+    private ValueAnimator themeAnimator;
+    /** Sun Home views; null on layouts without them (Hebrew keeps the original Home). */
+    private View shelf;
+    private TextView[] tabs;
+    private RecyclerView continueRow;
+    private ContinueAdapter continueAdapter;
+    private ContinueRepository continueRepo;
+    private List<ContinueItem> continueItems = Collections.emptyList();
+    private int activeTab;
+    private int lastCard;
+    /** The dock tile the shelf returns to on Down. */
+    private int lastDock;
+    private TextView btnTheme, btnSleep;
     private String vpnApp;
     private SpringAnimation springX, springY;
     private float glassTargetX, glassTargetY;
@@ -294,6 +323,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             updateWifiLabel();
             sky.update();
             wallpaperPlayer.update();
+            updateTheme(true);
             handler.postDelayed(this, MINUTE_MS);
         }
     };
@@ -431,7 +461,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public void onChildViewDetachedFromWindow(@NonNull View v) {
             }
         });
-        if (dockRow) grid.addItemDecoration(new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames));
+        if (dockRow) {
+            dockDecoration = new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames);
+            grid.addItemDecoration(dockDecoration);
+        }
+        double[] sun = Config.sunCoords(this);
+        sunLat = sun[0];
+        sunLon = sun[1];
+        updateTheme(false);
         if (animations) {
             int enterAnim = reducedMotion ? R.anim.tile_enter_reduced : R.anim.tile_enter;
             float enterDelay = reducedMotion ? 0f : 0.06f;
@@ -464,6 +501,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
             // No dock to push down: the grid starts at the top, with room for the first row's zoom and glass.
             if (!MainActivity.this.dockRow) want = (int) (AppAdapter.TOP_ROOM_DP * density);
+            // Sun Home: the shelf above already fills the screen, so the dock sits right under it (and at the top
+            // while the shelf is hidden for the app grid) instead of being parked low.
+            if (shelf != null) want = (int) (AppAdapter.TOP_ROOM_DP * density);
             if (grid.getPaddingTop() != want) {
                 grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
             }
@@ -511,7 +551,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
         btnInputs.setOnClickListener(v -> showInputs());
-        btnWifi.setOnClickListener(v -> openNetworkPill());
+        // Sun Home: the network button opens a menu like Inputs (a configured VPN app keeps the old shortcut).
+        btnWifi.setOnClickListener(v -> {
+            if (findViewById(R.id.shelf) != null && vpnApp.isEmpty()) showNetworkMenu();
+            else openNetworkPill();
+        });
         btnWifi.setOnLongClickListener(v -> {
             open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
             return true;
@@ -538,6 +582,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             showSettingsMenu();
             return true;
         });
+        setUpSunHome();
 
         // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
         // jump to a tile far below when there is nothing in that direction.
@@ -546,11 +591,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                // Back to the dock tile Up came from, not wherever the focus finder lands.
+                // Sun Home: down to the tabs; without them, back to the dock tile Up came from.
+                if (focusTabs()) return true;
                 focusTile(lastFocused % COLUMNS);
                 return true;
             }
-            int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
+            int firstButton = btnTheme != null ? R.id.btnTheme
+                    : btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
             int leftButton = rtlMenuBar ? R.id.btnSettings : firstButton;
             int rightButton = rtlMenuBar ? firstButton : R.id.btnSettings;
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v.getId() == leftButton;
@@ -561,6 +608,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
         btnLibraryTop.setOnKeyListener(pillKeys);
+        if (btnTheme != null) {
+            btnTheme.setOnKeyListener(pillKeys);
+            btnSleep.setOnKeyListener(pillKeys);
+        }
         if (advancedEffects) {
             for (View button : new View[]{btnInputs, btnWifi, btnReorder, btnLibraryTop, btnSettings}) {
                 button.setOnFocusChangeListener((view, focused) -> view.animate()
@@ -651,6 +702,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         restartIdleClock();
         promptsPaused = false;
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
+        updateTheme(false);
+        if (continueRepo != null) continueRepo.load(this::onContinueLoaded);
         if (rebuildOnResume) {
             tilesReady = false;
             reloadApps(true);
@@ -1169,6 +1222,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public void onTileFocused(int position, View card) {
+        // The shelf showing or hiding moves the grid: place the highlight once it has moved (showShelf calls back).
+        if (showShelf(position < COLUMNS, position)) return;
+        if (position < COLUMNS) lastDock = position;
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
         // Focus restored before the first layout (cold start): the tile has no size yet, and the glass
@@ -1258,7 +1314,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         float scale = adapter.focusScale();
         int w = (int) (card.getWidth() * scale + 2 * pad);
         int h = (int) (card.getHeight() * scale + 2 * pad);
-        if (!glassShown || card.getWidth() != glassCardW || glass.getWidth() != w || glass.getHeight() != h) {
+        // Sun Home: the shelf hiding or showing moves the whole grid, so check the spot as well as the size.
+        Rect r = new Rect(0, 0, card.getWidth(), card.getHeight());
+        root.offsetDescendantRectToMyCoords(card, r);
+        float x = r.exactCenterX() - w / 2f;
+        float y = r.exactCenterY() - h / 2f - (advancedEffects ? 4f * density : 0f);
+        if (!glassShown || card.getWidth() != glassCardW || glass.getWidth() != w || glass.getHeight() != h
+                || GridNavigation.glassMoved(glassTargetX, glassTargetY, x, y, density)) {
             onTileFocused(pos, card);
         }
     }
@@ -1458,6 +1520,271 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * over the screen is one texture. It is painted once in white and tinted with the app's colour,
      * so changing apps neither repaints it on the CPU (about 11 ms) nor uploads it again.
      */
+    DayNight.Mode themeMode() {
+        String mode = getSharedPreferences("sun_home", MODE_PRIVATE).getString("theme_mode", "AUTO");
+        try {
+            return DayNight.Mode.valueOf(mode);
+        } catch (IllegalArgumentException e) {
+            return DayNight.Mode.AUTO;
+        }
+    }
+
+    void setThemeMode(DayNight.Mode mode) {
+        getSharedPreferences("sun_home", MODE_PRIVATE).edit().putString("theme_mode", mode.name()).apply();
+        updateTheme(true);
+    }
+
+    /** Picks night or day from the sun (or the theme button) and fades to it if it changed. */
+    private void updateTheme(boolean animate) {
+        LocalDateTime now = LocalDateTime.now();
+        int[] sun = SunTimes.compute(now.toLocalDate(), sunLat, sunLon, ZoneId.systemDefault());
+        boolean isNight = DayNight.isNight(themeMode(), now.getHour() * 60 + now.getMinute(), sun[0], sun[1]);
+        if (night != null && night == isNight) return;
+        night = isNight;
+        Log.i("TvHome/Theme", "mode=" + themeMode() + " now=" + now.toLocalTime() + " sunrise=" + sun[0] / 60 + ":"
+                + sun[0] % 60 + " sunset=" + sun[1] / 60 + ":" + sun[1] % 60 + " night=" + isNight);
+        Palette target = isNight ? Palette.NIGHT : Palette.DAY;
+        if (themeAnimator != null) themeAnimator.cancel();
+        if (!animate || palette == null || !animations) {
+            applyPalette(target);
+            return;
+        }
+        Palette from = palette;
+        themeAnimator = ValueAnimator.ofFloat(0f, 1f);
+        themeAnimator.setDuration(1500);
+        themeAnimator.addUpdateListener(a -> applyPalette(Palette.lerp(from, target, (float) a.getAnimatedValue())));
+        themeAnimator.start();
+    }
+
+    void applyPalette(Palette p) {
+        palette = p;
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{p.bgTop, p.bgMid, p.bgBottom});
+        bg.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        bg.setGradientCenter(0.3f, 0.35f);
+        bg.setGradientRadius(getResources().getDisplayMetrics().widthPixels * 0.85f);
+        root.setBackground(bg);
+        boolean dark = p.isDark();
+        ambient.setVisibility(dark ? View.VISIBLE : View.INVISIBLE);
+        greetingColor = p.textMuted;
+        updateGreeting();
+        TextView clock = findViewById(R.id.clock);
+        clock.setTextColor(p.text);
+        ((TextView) findViewById(R.id.ampm)).setTextColor(p.textMuted);
+        ((TextView) findViewById(R.id.date)).setTextColor(p.textMuted);
+        if (dockDecoration != null) {
+            dockDecoration.setColors(p.dockBand, dark ? 0x26FFFFFF : 0xFFFFFFFF);
+            grid.invalidateItemDecorations();
+        }
+        if (shelf == null) return;
+        findViewById(R.id.clockDivider).setBackgroundColor(dark ? 0x33FFFFFF : 0x3317171A);
+        for (int id : new int[]{R.id.btnTheme, R.id.btnSleep, R.id.btnInputs, R.id.btnWifi, R.id.btnSettings}) {
+            styleRoundButton(findViewById(id), p, dark);
+        }
+        for (TextView tab : tabs) styleTab(tab, p, dark);
+        adapter.setNameColor(dark ? 0xFFFFFFFF : Palette.DAY.text);   // two values: no rebind per animation frame
+        continueAdapter.setPalette(p);
+    }
+
+    // ---- Sun Home: tabs, continue-watching row, theme and sleep buttons ------------------------------------------
+
+    private void setUpSunHome() {
+        shelf = findViewById(R.id.shelf);
+        if (shelf == null) return;
+        btnTheme = findViewById(R.id.btnTheme);
+        btnSleep = findViewById(R.id.btnSleep);
+        btnTheme.setOnClickListener(v -> cycleThemeMode());
+        btnSleep.setOnClickListener(v -> openSleepTimer());
+        tabs = new TextView[]{findViewById(R.id.tab0), findViewById(R.id.tab1), findViewById(R.id.tab2)};
+        for (int i = 0; i < tabs.length; i++) {
+            final int tab = i;
+            tabs[i].setOnFocusChangeListener((v, focused) -> {
+                if (focused) showTab(tab);
+                styleTab((TextView) v, palette, palette.isDark());
+            });
+            tabs[i].setOnKeyListener((v, keyCode, e) -> e.getAction() == KeyEvent.ACTION_DOWN && tabKey(tab, keyCode));
+        }
+        continueRepo = new ContinueRepository(this);
+        continueAdapter = new ContinueAdapter(this, continueRepo, new ContinueAdapter.Listener() {
+            @Override public void onCardClicked(ContinueItem item) {
+                if (item.launch != null) open(new Intent(item.launch));
+            }
+
+            @Override public boolean onCardKey(int position, int keyCode) {
+                return cardKey(position, keyCode);
+            }
+
+            @Override public void onCardFocused(int position) {
+                lastCard = position;
+                hideGlass();
+                continueRow.smoothScrollToPosition(position);
+            }
+        });
+        continueRow = findViewById(R.id.continueRow);
+        continueRow.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        continueRow.setItemAnimator(null);
+        continueRow.setAdapter(continueAdapter);
+        if (palette != null) applyPalette(palette);
+    }
+
+    private void onContinueLoaded(List<ContinueItem> items) {
+        continueItems = items;
+        showTab(activeTab);
+        showShelf(!grid.hasFocus() || lastFocused < COLUMNS, -1);
+    }
+
+    void showTab(int tab) {
+        activeTab = tab;
+        List<ContinueItem> shown = ContinueMerge.filter(continueItems, tab);
+        continueAdapter.submit(shown);
+        lastCard = Math.min(lastCard, Math.max(0, shown.size() - 1));
+        for (TextView t : tabs) styleTab(t, palette, palette.isDark());
+    }
+
+    /** The shelf shows above the dock while there is something to continue, and hides for the app grid. */
+    private boolean showShelf(boolean show, int focusPosition) {
+        if (shelf == null) return false;
+        int want = show && !continueItems.isEmpty() ? View.VISIBLE : View.GONE;
+        if (shelf.getVisibility() == want) return false;
+        // The tile under the highlight now: after the move the highlight jumps along with it, then springs to the
+        // new tile, so it travels the way the remote pressed instead of from where the tile used to be.
+        RecyclerView.ViewHolder under = grid.findViewHolderForAdapterPosition(lastFocused);
+        final View underCard = under == null ? null : under.itemView.findViewById(R.id.card);
+        final int[] before = new int[2];
+        if (underCard != null) underCard.getLocationInWindow(before);
+        else grid.getLocationInWindow(before);
+        shelf.setVisibility(want);
+        // The grid's height changes with the shelf: bring the dock back into view in the same layout pass.
+        if (want == View.VISIBLE) grid.scrollToPosition(0);
+        grid.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                grid.getViewTreeObserver().removeOnPreDrawListener(this);
+                int[] after = new int[2];
+                if (underCard != null && underCard.isAttachedToWindow()) underCard.getLocationInWindow(after);
+                else grid.getLocationInWindow(after);
+                springX.cancel();
+                springY.cancel();
+                glass.setTranslationX(glass.getTranslationX() + after[0] - before[0]);
+                glass.setTranslationY(glass.getTranslationY() + after[1] - before[1]);
+                int pos = focusPosition >= 0 ? focusPosition : lastFocused;
+                RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
+                View card = vh == null ? null : vh.itemView.findViewById(R.id.card);
+                if (card != null && card.isFocused()) onTileFocused(pos, card);
+                return true;
+            }
+        });
+        return true;
+    }
+
+    private boolean focusContinueRow() {
+        if (shelf == null || shelf.getVisibility() != View.VISIBLE || continueAdapter.getItemCount() == 0) return false;
+        int pos = Math.min(lastCard, continueAdapter.getItemCount() - 1);
+        RecyclerView.ViewHolder vh = continueRow.findViewHolderForAdapterPosition(pos);
+        if (vh == null) {
+            continueRow.scrollToPosition(pos);
+            continueRow.post(() -> {
+                RecyclerView.ViewHolder later = continueRow.findViewHolderForAdapterPosition(pos);
+                if (later != null) later.itemView.requestFocus();
+            });
+            hideGlass();
+            return true;
+        }
+        hideGlass();
+        return vh.itemView.requestFocus();
+    }
+
+    private boolean focusTabs() {
+        if (shelf == null || shelf.getVisibility() != View.VISIBLE) return false;
+        hideGlass();
+        return tabs[activeTab].requestFocus();
+    }
+
+    private boolean tabKey(int tab, int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (tab > 0) tabs[tab - 1].requestFocus();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (tab < tabs.length - 1) tabs[tab + 1].requestFocus();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                findViewById(R.id.btnSettings).requestFocus();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (!focusContinueRow()) focusTile(lastDock);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean cardKey(int position, int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                return focusTabs();
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                focusTile(lastDock);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                return position <= 0;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                return position >= continueAdapter.getItemCount() - 1;
+            default:
+                return false;
+        }
+    }
+
+    private void cycleThemeMode() {
+        DayNight.Mode next = DayNight.Mode.values()[(themeMode().ordinal() + 1) % DayNight.Mode.values().length];
+        setThemeMode(next);
+        int msg = next == DayNight.Mode.AUTO ? R.string.theme_auto
+                : next == DayNight.Mode.LIGHT ? R.string.theme_light : R.string.theme_dark;
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    /** The firmware's own off timer: a launcher cannot put the TV to sleep by itself. */
+    private void openSleepTimer() {
+        Intent timer = new Intent().setClassName("com.android.tv.settings",
+                "com.android.tv.settings.partnercustomizer.timer.TimerActivity");
+        if (getPackageManager().resolveActivity(timer, 0) == null) {
+            Toast.makeText(this, R.string.sleep_timer_missing, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        open(timer);
+    }
+
+    private void styleRoundButton(TextView b, Palette p, boolean dark) {
+        GradientDrawable idle = new GradientDrawable();
+        idle.setShape(GradientDrawable.OVAL);
+        idle.setColor(p.buttonFill);
+        idle.setStroke((int) density, dark ? 0x38FFFFFF : 0x14000000);
+        GradientDrawable focus = new GradientDrawable();
+        focus.setShape(GradientDrawable.OVAL);
+        focus.setColor(dark ? 0xF5FFFFFF : 0xFF17171A);
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_focused}, focus);
+        bg.addState(new int[]{}, idle);
+        b.setBackground(bg);
+        int focusedIcon = dark ? 0xFF17171A : 0xFFFFFFFF;
+        b.setCompoundDrawableTintList(new ColorStateList(
+                new int[][]{{android.R.attr.state_focused}, {}}, new int[]{focusedIcon, p.text}));
+    }
+
+    private void styleTab(TextView t, Palette p, boolean dark) {
+        boolean active = tabs != null && t == tabs[activeTab];
+        if (t.isFocused()) {
+            GradientDrawable pill = new GradientDrawable();
+            pill.setCornerRadius(16 * density);
+            pill.setColor(dark ? 0xF5FFFFFF : 0xFF17171A);
+            t.setBackground(pill);
+            t.setTextColor(dark ? 0xFF17171A : 0xFFFFFFFF);
+        } else {
+            t.setBackground(null);
+            t.setTextColor(active ? p.text : p.textMuted);
+        }
+    }
+
     private void setAmbient(int color) {
         if (color == ambientColor && ambient.getBackground() != null) return;
         ambientColor = color;
@@ -1772,7 +2099,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
+            if (position < COLUMNS) {
+                // Sun Home: the continue-watching row (or its tabs) sits between the dock and the top bar.
+                if (focusContinueRow() || focusTabs()) return true;
+                return false;                              // dock row: let focus move to the top bar
+            }
             target = position - COLUMNS;
         } else {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
@@ -2397,6 +2728,105 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int alignment = getResources().getBoolean(R.bool.rtl_menu_bar) ? Gravity.END : Gravity.START;
         dropIn(popup, panel, anchor, alignment);
         rows.getChildAt(0).requestFocus();
+    }
+
+    /**
+     * The network button's menu: this network and its signal, whether the internet works and the TV's address, the
+     * networks around (strongest first), and the system's network settings. Android lets only the system switch
+     * Wi-Fi networks, so a network in the list opens the settings, where it is one click away.
+     */
+    private void showNetworkMenu() {
+        View anchor = findViewById(R.id.btnWifi);
+        View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
+        LinearLayout rows = panel.findViewById(R.id.rows);
+        final PopupWindow popup = glassPopup(panel, (int) (240 * density));
+        Runnable settings = () -> open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
+
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        Network active = cm == null ? null : cm.getActiveNetwork();
+        NetworkCapabilities caps = active == null ? null : cm.getNetworkCapabilities(active);
+        boolean onWifi = caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+        boolean onEthernet = caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET);
+        String current = null;
+        if (onWifi && wm != null) {
+            WifiInfo info = wm.getConnectionInfo();
+            current = info == null || info.getSSID() == null ? null : info.getSSID().replace("\"", "").trim();
+            if (current != null && (current.isEmpty() || current.contains("unknown"))) current = getString(R.string.wifi);
+            addMenuRow(rows, popup, R.drawable.ic_wifi, current, signalText(info == null ? -100 : info.getRssi()),
+                    true, settings);
+        } else if (onEthernet) {
+            addMenuRow(rows, popup, R.drawable.ic_ethernet, getString(R.string.ethernet), null, true, settings);
+        } else {
+            addMenuRow(rows, popup, R.drawable.ic_wifi, getString(R.string.no_network), null, false, settings);
+        }
+        if (caps != null) {
+            boolean internet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            String ip = null;
+            LinkProperties link = cm.getLinkProperties(active);
+            if (link != null) {
+                for (LinkAddress a : link.getLinkAddresses()) {
+                    if (a.getAddress() instanceof Inet4Address) ip = a.getAddress().getHostAddress();
+                }
+            }
+            addMenuRow(rows, popup, 0, getString(internet ? R.string.internet_ok : R.string.internet_none), ip,
+                    false, settings);
+        }
+
+        if (wm != null) {
+            List<WifiNearby.Network> scan = new ArrayList<>();
+            try {
+                for (ScanResult r : wm.getScanResults()) {
+                    String caps2 = r.capabilities == null ? "" : r.capabilities;
+                    scan.add(new WifiNearby.Network(r.SSID, r.level,
+                            caps2.contains("WPA") || caps2.contains("WEP") || caps2.contains("SAE")));
+                }
+                wm.startScan();   // fresher list next time; Android throttles this on its own
+            } catch (SecurityException ignored) {
+                // no location permission: the menu simply has no list of networks around
+            }
+            List<WifiNearby.Network> nearby = WifiNearby.list(scan, current, 5);
+            if (!nearby.isEmpty()) addSeparator(rows);
+            for (WifiNearby.Network n : nearby) {
+                addMenuRow(rows, popup, n.secured ? R.drawable.ic_lock : R.drawable.ic_wifi, n.ssid,
+                        signalText(n.rssi), false, settings);
+            }
+        }
+        addSeparator(rows);
+        addMenuRow(rows, popup, R.drawable.ic_settings, getString(R.string.network_settings), null, false, settings);
+
+        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        popup.setWidth(Math.max((int) (240 * density), Math.min(panel.getMeasuredWidth(), (int) (380 * density))));
+        dropIn(popup, panel, anchor, Gravity.START);
+        rows.getChildAt(0).requestFocus();
+    }
+
+    private String signalText(int rssi) {
+        switch (WifiNearby.strength(rssi)) {
+            case WifiNearby.EXCELLENT: return getString(R.string.signal_excellent);
+            case WifiNearby.GOOD: return getString(R.string.signal_good);
+            case WifiNearby.FAIR: return getString(R.string.signal_fair);
+            default: return getString(R.string.signal_weak);
+        }
+    }
+
+    /** A row of the network menu in the Inputs menu's style; iconRes 0 leaves the icon's place empty. */
+    private void addMenuRow(LinearLayout rows, PopupWindow popup, int iconRes, String title, String status, boolean dot,
+                            Runnable action) {
+        View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
+        ImageView icon = row.findViewById(R.id.icon);
+        if (iconRes != 0) icon.setImageResource(iconRes);
+        else icon.setVisibility(View.INVISIBLE);
+        ((TextView) row.findViewById(R.id.title)).setText(title);
+        TextView statusView = row.findViewById(R.id.status);
+        if (status == null) statusView.setVisibility(View.GONE);
+        else statusView.setText(status);
+        row.findViewById(R.id.dot).setVisibility(dot ? View.VISIBLE : View.GONE);
+        row.setOnClickListener(v -> {
+            popup.dismiss();
+            action.run();
+        });
+        rows.addView(row);
     }
 
     private PopupWindow glassPopup(View panel, int width) {

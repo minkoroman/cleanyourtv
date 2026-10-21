@@ -1,102 +1,168 @@
 package com.gathin.tvhome;
 
-import android.animation.ArgbEvaluator;
-import android.animation.ValueAnimator;
-import android.graphics.drawable.GradientDrawable;
+import android.content.Context;
+import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.widget.FrameLayout;
+import android.view.Gravity;
+import android.widget.ImageView;
+import android.widget.TextView;
 
+import java.time.LocalTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 
 /**
- * The clock screensaver's scene (layout dream_clock): the thin clock and date on black over a slow ambient
- * glow. Every minute the clock drifts to a new spot and the glow shifts colour, so nothing burns in.
- * Shared by ClockDream (the system screensaver) and ClockActivity (Home left idle).
+ * The clock screensaver's scene (layout dream_clock): stills from the continue-watching row (uafix history, TMDB
+ * backdrops already cached by Home) fill the screen one after another, each slowly zooming, with its title at the
+ * bottom left and a split-flap clock at the bottom right. Every minute the text drifts a little so nothing burns
+ * in. Without stills it is the clock on black. Shared by ClockDream (the system screensaver) and ClockActivity
+ * (Home left idle).
  */
 final class ClockScene {
 
-    private static final long MOVE_MS = 60_000L;
-    /** Deep, low-brightness glow colours; the glow is drawn at partial alpha on black. */
-    private static final int[] PALETTE = {0xFF2B5CFF, 0xFF00A39A, 0xFF8A3FFC, 0xFFE0661B, 0xFFD6336C};
+    private static final long SLIDE_MS = 20_000L;
+    private static final long FADE_MS = 1500L;
+    private static final float ZOOM = 1.08f;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Random random = new Random();
-    private final View content;
-    private final GradientDrawable glow;
-    private int colorIndex;
-    private int glowColor;
+    private ContinueRepository repository;
+    private List<ContinueItem> slides = Collections.emptyList();
+    private int index = -1;
+    private ImageView front, back;
+    private View info, clockBlock, track, progress;
+    private TextView kicker, title, subtitle;
+    private FlipClockView flip;
+    private boolean started;
 
-    private final Runnable tick = new Runnable() {
+    private final Runnable slideTick = new Runnable() {
         @Override
         public void run() {
-            moveClock();
-            shiftGlow();
-            handler.postDelayed(this, MOVE_MS);
+            showNext();
+            handler.postDelayed(this, SLIDE_MS);
         }
     };
 
+    private final Runnable minuteTick = new Runnable() {
+        @Override
+        public void run() {
+            LocalTime now = LocalTime.now();
+            flip.setTime(now.getHour(), now.getMinute(), true);
+            drift();
+            handler.postDelayed(this, 60_000L - (now.getSecond() * 1000L + now.getNano() / 1_000_000L));
+        }
+    };
+
+    static int nextSlide(int current, int count) {
+        return count == 0 ? -1 : (current + 1) % count;
+    }
+
+    private final Context context;
+    private final View root;
+
     /** root is the inflated dream_clock layout. */
     ClockScene(View root) {
-        content = root.findViewById(R.id.dreamContent);
-        View ambient = root.findViewById(R.id.dreamAmbient);
-        glow = new GradientDrawable();
-        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        ambient.setBackground(glow);
-        ambient.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) ->
-                glow.setGradientRadius((r - l) * 0.55f));
-        colorIndex = random.nextInt(PALETTE.length);
-        setGlow(PALETTE[colorIndex]);
+        this.root = root;
+        context = root.getContext();
+        front = root.findViewById(R.id.dreamArtA);
+        back = root.findViewById(R.id.dreamArtB);
+        info = root.findViewById(R.id.dreamInfo);
+        clockBlock = root.findViewById(R.id.dreamClockBlock);
+        kicker = root.findViewById(R.id.dreamKicker);
+        title = root.findViewById(R.id.dreamTitle);
+        subtitle = root.findViewById(R.id.dreamSubtitle);
+        track = root.findViewById(R.id.dreamTrack);
+        progress = root.findViewById(R.id.dreamProgress);
+        progress.setPivotX(0f);
+        flip = root.findViewById(R.id.dreamFlip);
+        LocalTime now = LocalTime.now();
+        flip.setTime(now.getHour(), now.getMinute(), false);
+        repository = new ContinueRepository(context);
+        placeClock(false);   // centred until the first still arrives
+    }
+
+    /** In the corner beside a still's title, or in the middle of a black screen when there are no stills. */
+    private void placeClock(boolean corner) {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) clockBlock.getLayoutParams();
+        int m = Math.round(context.getResources().getDisplayMetrics().density * (corner ? 56 : 0));
+        lp.gravity = corner ? Gravity.BOTTOM | Gravity.END : Gravity.CENTER;
+        lp.setMarginEnd(m);
+        lp.bottomMargin = corner ? Math.round(context.getResources().getDisplayMetrics().density * 40) : 0;
+        clockBlock.setLayoutParams(lp);
+        ((android.widget.LinearLayout) clockBlock).setGravity(corner ? Gravity.END : Gravity.CENTER_HORIZONTAL);
     }
 
     void start() {
-        content.setAlpha(0f);
-        content.post(() -> {
-            placeClock();
-            content.animate().alpha(1f).setDuration(1200).start();
+        started = true;
+        clockBlock.animate().alpha(1f).setDuration(1200).start();
+        handler.post(minuteTick);
+        repository.load(items -> {
+            boolean first = slides.isEmpty();
+            slides = items;
+            if (first && started && !items.isEmpty()) {
+                handler.removeCallbacks(slideTick);
+                handler.post(slideTick);
+            }
         });
-        handler.removeCallbacks(tick);
-        handler.postDelayed(tick, MOVE_MS);
     }
 
     void stop() {
-        handler.removeCallbacks(tick);
+        started = false;
+        handler.removeCallbacksAndMessages(null);
     }
 
-    private void moveClock() {
-        content.animate().alpha(0f).setDuration(900).withEndAction(() -> {
-            placeClock();
-            content.animate().alpha(1f).setDuration(1200).start();
+    private void showNext() {
+        index = nextSlide(index, slides.size());
+        if (index < 0) return;
+        ContinueItem item = slides.get(index);
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        repository.art(item, width, bmp -> {
+            if (started) present(item, bmp);
+        });
+    }
+
+    /** Fades the new still in over the old one and starts its slow zoom; the title changes with it. */
+    private void present(ContinueItem item, Bitmap bmp) {
+        placeClock(true);
+        ImageView incoming = back;
+        back = front;
+        front = incoming;
+        // The new still goes over the old one, and the scrim and text back over both.
+        incoming.bringToFront();
+        root.findViewById(R.id.dreamScrim).bringToFront();
+        info.bringToFront();
+        clockBlock.bringToFront();
+        incoming.setImageBitmap(bmp);
+        incoming.animate().cancel();
+        incoming.setAlpha(0f);
+        incoming.setScaleX(1f);
+        incoming.setScaleY(1f);
+        incoming.setTranslationX(0f);
+        incoming.setPivotX(incoming.getWidth() * (0.3f + 0.4f * random.nextFloat()));
+        incoming.setPivotY(incoming.getHeight() * (0.3f + 0.4f * random.nextFloat()));
+        incoming.animate().alpha(1f).setDuration(FADE_MS).start();
+        incoming.animate().scaleX(ZOOM).scaleY(ZOOM).setDuration(SLIDE_MS + FADE_MS).start();
+        info.animate().alpha(0f).setDuration(400).withEndAction(() -> {
+            kicker.setText(context.getString(R.string.continue_watching) + " · " + item.source);
+            title.setText(item.title);
+            subtitle.setText(item.subtitle != null ? item.subtitle
+                    : context.getString(item.series ? R.string.kind_series : R.string.kind_film));
+            track.setVisibility(item.progress > 0.01f ? View.VISIBLE : View.INVISIBLE);
+            progress.setScaleX(item.progress);
+            info.animate().alpha(1f).setDuration(900).start();
         }).start();
     }
 
-    /** A random spot that keeps the whole clock on screen, with the glow centred behind it. */
-    private void placeClock() {
-        View parent = (View) content.getParent();
-        int maxX = Math.max(0, parent.getWidth() - content.getWidth());
-        int maxY = Math.max(0, parent.getHeight() - content.getHeight());
-        float x = maxX * (0.1f + 0.8f * random.nextFloat());
-        float y = maxY * (0.1f + 0.8f * random.nextFloat());
-        content.setX(x);
-        content.setY(y);
-        if (parent.getWidth() > 0 && parent.getHeight() > 0) {
-            glow.setGradientCenter((x + content.getWidth() / 2f) / parent.getWidth(),
-                    (y + content.getHeight() / 2f) / parent.getHeight());
-        }
-    }
-
-    private void shiftGlow() {
-        int from = glowColor;
-        colorIndex = (colorIndex + 1) % PALETTE.length;
-        ValueAnimator anim = ValueAnimator.ofObject(new ArgbEvaluator(), from, PALETTE[colorIndex]);
-        anim.setDuration(8000);
-        anim.addUpdateListener(a -> setGlow((int) a.getAnimatedValue()));
-        anim.start();
-    }
-
-    private void setGlow(int color) {
-        glowColor = color;
-        int c = color & 0x00FFFFFF;
-        glow.setColors(new int[]{0x40000000 | c, 0x14000000 | c, 0x00000000 | c});
+    /** A few dp in a random direction each minute, so the text never sits on the same pixels for long. */
+    private void drift() {
+        float d = 10 * context.getResources().getDisplayMetrics().density;
+        float dx = (random.nextFloat() * 2 - 1) * d;
+        float dy = (random.nextFloat() * 2 - 1) * d;
+        info.animate().translationX(dx).translationY(dy).setDuration(3000).start();
+        clockBlock.animate().translationX(-dx).translationY(dy).setDuration(3000).start();
     }
 }

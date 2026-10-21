@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="continue_caption_height">40dp</dimen>
+    <!-- Focused still 260x146dp + 6dp gap + caption; the row never grows past this. -->
+    <dimen name="continue_row_height">192dp</dimen>
+    <dimen name="continue_card_width">170dp</dimen>
+    <dimen name="continue_card_focused_width">260dp</dimen>
+</resources>

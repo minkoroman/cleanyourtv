@@ -9,4 +9,9 @@ final class GridNavigation {
         if (towardStart) return position % columns == 0;
         return position % columns == columns - 1 || position == count - 1;
     }
+
+    /** Whether the highlight's target is no longer where its tile now is (a layout moved the grid under it). */
+    static boolean glassMoved(float targetX, float targetY, float x, float y, float tolerance) {
+        return Math.abs(targetX - x) > tolerance || Math.abs(targetY - y) > tolerance;
+    }
 }

@@ -116,7 +116,7 @@
     <bool name="reorder_button">false</bool>
     <!-- Wi-Fi and Settings as round icon-only buttons (the network name moves to the talkback description);
          Inputs keeps its label. -->
-    <bool name="icon_only_buttons">false</bool>
+    <bool name="icon_only_buttons">true</bool>
     <!-- The app library as a round button in the top bar, beside Settings (app_library must be on too). -->
     <bool name="library_button">false</bool>
     <!-- With icon_only_buttons: keep the network name on the Wi-Fi pill up to this width in dp, cut with an ellipsis.
@@ -139,11 +139,11 @@
 
     <!-- The focused dock app's name in large type above the dock. false keeps only the glow, which leaves room
          for bigger tiles when rows_below_dock is 2 or 3. -->
-    <bool name="dock_title">true</bool>
+    <bool name="dock_title">false</bool>
 
     <!-- Tiles per row in the grid; the dock always has this many slots. Tiles are 180dp wide at 4 columns and
          shrink to fit from 5 up (about 144dp at 5, 117dp at 6 on a 1080p TV). -->
-    <integer name="columns">4</integer>
+    <integer name="columns">5</integer>
 
     <!-- Basic motion is on; advanced effects are opt-in in the launcher's own Settings screen. -->
     <bool name="animations">true</bool>
@@ -196,4 +196,9 @@
          Live TV window does not keep the screen on (CVTE): there the system screensaver would start in the
          middle of a programme. Can also be set with "home_idle_clock_minutes": 10 in a theme's config.json. -->
     <integer name="home_idle_clock_minutes">0</integer>
+
+    <!-- Sun Home: where sunrise and sunset are reckoned from when config.json has no sun_lat/sun_lon (the
+         installer writes them for the TV's town). Kyiv. -->
+    <string name="sun_lat" translatable="false">50.45</string>
+    <string name="sun_lon" translatable="false">30.52</string>
 </resources>

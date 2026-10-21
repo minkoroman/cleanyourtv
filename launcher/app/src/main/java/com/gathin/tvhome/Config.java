@@ -1,5 +1,6 @@
 package com.gathin.tvhome;
 
+import org.json.JSONException;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -192,6 +193,38 @@ final class Config {
     }
 
     /** The folder the theme tools push into; null when external storage is unavailable. */
+    /**
+     * Sun Home: where sunrise and sunset are reckoned from. config.json's sun_lat and sun_lon (set by the
+     * installer for the TV's town) win over the built-in default; a missing, broken or impossible pair is ignored.
+     */
+    static double[] sunCoords(String json, double[] fallback) {
+        if (json == null) return fallback;
+        try {
+            JSONObject o = new JSONObject(json);
+            Object lat = o.opt("sun_lat"), lon = o.opt("sun_lon");
+            if (!(lat instanceof Number) || !(lon instanceof Number)) return fallback;
+            double a = ((Number) lat).doubleValue(), b = ((Number) lon).doubleValue();
+            if (Math.abs(a) > 90 || Math.abs(b) > 180) return fallback;
+            return new double[]{a, b};
+        } catch (JSONException e) {
+            return fallback;
+        }
+    }
+
+    static double[] sunCoords(Context ctx) {
+        double[] fallback = {Double.parseDouble(ctx.getString(R.string.sun_lat)),
+                Double.parseDouble(ctx.getString(R.string.sun_lon))};
+        File dir = dir(ctx);
+        File f = dir == null ? null : new File(dir, FILE_NAME);
+        if (f == null || !f.isFile()) return fallback;
+        try {
+            return sunCoords(new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8), fallback);
+        } catch (java.io.IOException e) {
+            return fallback;
+        }
+    }
+
     static File dir(Context ctx) {
         return ctx.getExternalFilesDir(null);
     }

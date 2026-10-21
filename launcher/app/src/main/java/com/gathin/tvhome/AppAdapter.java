@@ -109,6 +109,15 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return Math.round(tileWidthPx * DESIGN_H_DP / DESIGN_W_DP);
     }
 
+    /** Sun Home: tile names follow the day/night palette. */
+    private int nameColor = 0xFFFFFFFF;
+
+    void setNameColor(int color) {
+        if (color == nameColor) return;
+        nameColor = color;
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
     /** Height of one grid item: the tile, the name label under it and the item's own padding. */
     static int itemHeightPx(int tileHeightPx, float density) {
         return itemHeightPx(tileHeightPx, true, density);
@@ -411,6 +420,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         h.name.setText(e.name);
         // The dock has no labels, unless always_show_names asks for them (DockDecoration then makes room in the band).
         h.name.setVisibility(dockRow && position < dockSize && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
+        h.name.setTextColor(nameColor);
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
         h.name.setAlpha(focused ? 1f : restNameAlpha);
         h.card.setScaleX(focused && animations ? focusScale() : 1f);

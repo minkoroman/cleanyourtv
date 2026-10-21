@@ -20,19 +20,23 @@ if (-not $TvHost) { throw 'pass -TvHost <tv ip> or set $env:TV_HOST' }
 $env:TV_HOST = $TvHost
 Set-Location $PSScriptRoot
 
-if (-not $env:JAVA_HOME -or -not (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
-    $jbr = Get-ChildItem 'C:\Program Files\Android' -Directory -ErrorAction SilentlyContinue |
-        ForEach-Object { Join-Path $_.FullName 'jbr' } | Where-Object { Test-Path "$_\bin\java.exe" } | Select-Object -First 1
-    if (-not $jbr) { throw 'Set JAVA_HOME to a JDK 17+ (Android Studio ships one in its jbr folder)' }
-    $env:JAVA_HOME = $jbr
-}
-$sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "$env:LOCALAPPDATA\Android\Sdk" }
-if (-not (Test-Path local.properties)) {
-    "sdk.dir=$($sdk -replace '\\', '\\')" | Out-File -Encoding ascii local.properties
-}
+# $env:PREBUILT_APK = <file> installs a ready APK (the installer's release download) and skips the build, so no
+# JDK or Android SDK is needed.
+if (-not $env:PREBUILT_APK) {
+    if (-not $env:JAVA_HOME -or -not (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
+        $jbr = Get-ChildItem 'C:\Program Files\Android' -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'jbr' } | Where-Object { Test-Path "$_\bin\java.exe" } | Select-Object -First 1
+        if (-not $jbr) { throw 'Set JAVA_HOME to a JDK 17+ (Android Studio ships one in its jbr folder)' }
+        $env:JAVA_HOME = $jbr
+    }
+    $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "$env:LOCALAPPDATA\Android\Sdk" }
+    if (-not (Test-Path local.properties)) {
+        "sdk.dir=$($sdk -replace '\\', '\\')" | Out-File -Encoding ascii local.properties
+    }
 
-.\gradlew.bat assembleRelease -q --console=plain
-if ($LASTEXITCODE -ne 0) { throw 'Gradle build failed' }
+    .\gradlew.bat assembleRelease -q --console=plain
+    if ($LASTEXITCODE -ne 0) { throw 'Gradle build failed' }
+}
 
 $py = '..\tools\venv\Scripts\python.exe'
 # Which app owns Home differs by build; ask the TV, but only accept a launcher we recognise (the answer
@@ -57,7 +61,7 @@ if (-not $StockLauncher) {
 Write-Host "Stock launcher: $StockLauncher"
 $disableStock = if ($StockLauncher -eq 'none') { 'echo stock launcher left alone' } else { "pm disable-user --user 0 $StockLauncher" }
 
-$apk = 'app\build\outputs\apk\release\app-release.apk'
+$apk = if ($env:PREBUILT_APK) { $env:PREBUILT_APK } else { 'app\build\outputs\apk\release\app-release.apk' }
 & $py -I ..\tools\b64push.py $apk /data/local/tmp/tvhome.apk
 if ($LASTEXITCODE -ne 0) { throw 'APK upload failed' }
 $out = & $py -I ..\tools\tv.py 'pm install -r /data/local/tmp/tvhome.apk; rm -f /data/local/tmp/tvhome.apk'

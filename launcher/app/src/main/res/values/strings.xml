@@ -107,4 +107,25 @@
     <!-- Cinematic top shelf (cinematic_home): the line under the focused dock app's name; %1$s is when it was
          last opened, e.g. "5 minutes ago" or "yesterday, 9:40 pm". -->
     <string name="last_opened">Last opened %1$s</string>
+    <!-- Sun Home -->
+    <string name="tab_overview">Overview</string>
+    <string name="tab_films">Films</string>
+    <string name="tab_series">Series</string>
+    <string name="kind_film">Film</string>
+    <string name="kind_series">Series</string>
+    <string name="continue_watching">Continue watching</string>
+    <string name="theme_button">Theme</string>
+    <string name="theme_auto">Theme: follows the sun</string>
+    <string name="theme_light">Theme: always light</string>
+    <string name="theme_dark">Theme: always dark</string>
+    <string name="sleep_timer">Sleep timer</string>
+    <string name="sleep_timer_missing">This TV has no sleep timer screen</string>
+    <string name="network_settings">Network settings</string>
+    <string name="no_network">Not connected</string>
+    <string name="internet_ok">Internet works</string>
+    <string name="internet_none">No internet</string>
+    <string name="signal_excellent">Excellent signal</string>
+    <string name="signal_good">Good signal</string>
+    <string name="signal_fair">Fair signal</string>
+    <string name="signal_weak">Weak signal</string>
 </resources>

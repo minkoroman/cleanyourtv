@@ -1,62 +1,126 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Screensaver (ClockDream): clock and date that drift around a black screen over an ambient glow. -->
+<!-- Screensaver (ClockDream): stills from the continue-watching row, slowly zooming, with the title at the bottom
+     left and a split-flap clock at the bottom right. Without stills it is the clock on black. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FF000000">
 
-    <View
-        android:id="@+id/dreamAmbient"
+    <ImageView
+        android:id="@+id/dreamArtA"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0"
+        android:importantForAccessibility="no" />
+
+    <ImageView
+        android:id="@+id/dreamArtB"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0"
+        android:importantForAccessibility="no" />
+
+    <View
+        android:id="@+id/dreamScrim"
+        android:layout_width="match_parent"
+        android:layout_height="360dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/dream_scrim" />
 
     <LinearLayout
-        android:id="@+id/dreamContent"
+        android:id="@+id/dreamInfo"
+        android:layout_width="440dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="56dp"
+        android:layout_marginBottom="44dp"
+        android:orientation="vertical"
+        android:alpha="0">
+
+        <TextView
+            android:id="@+id/dreamKicker"
+            android:shadowColor="#B3000000"
+            android:shadowRadius="10"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:textColor="#B3FFFFFF"
+            android:textSize="11sp"
+            android:letterSpacing="0.18"
+            android:textAllCaps="true"
+            android:fontFamily="@font/outfit_medium" />
+
+        <TextView
+            android:id="@+id/dreamTitle"
+            android:shadowColor="#B3000000"
+            android:shadowRadius="10"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textColor="#FFFFFFFF"
+            android:textSize="30sp"
+            android:fontFamily="@font/outfit_medium" />
+
+        <TextView
+            android:id="@+id/dreamSubtitle"
+            android:shadowColor="#B3000000"
+            android:shadowRadius="10"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textColor="#CCFFFFFF"
+            android:textSize="14sp"
+            android:fontFamily="@font/outfit_regular" />
+
+        <FrameLayout
+            android:id="@+id/dreamTrack"
+            android:layout_width="160dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="8dp"
+            android:background="#4DFFFFFF">
+
+            <View
+                android:id="@+id/dreamProgress"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#FFFFFFFF" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/dreamClockBlock"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="56dp"
+        android:layout_marginBottom="40dp"
+        android:gravity="end"
+        android:orientation="vertical"
+        android:alpha="0">
 
-        <LinearLayout
+        <com.gathin.tvhome.FlipClockView
+            android:id="@+id/dreamFlip"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:baselineAligned="true">
-
-            <TextClock
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:format12Hour="h:mm"
-                android:format24Hour="HH:mm"
-                android:textColor="#E6FFFFFF"
-                android:textSize="120sp"
-                android:fontFamily="@font/outfit_extralight"
-                android:letterSpacing="-0.04"
-                android:includeFontPadding="false" />
-
-            <TextClock
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:format12Hour="a"
-                android:format24Hour=""
-                android:textColor="#99FFFFFF"
-                android:textSize="22sp"
-                android:fontFamily="@font/outfit_medium"
-                android:letterSpacing="0.08"
-                android:textAllCaps="true" />
-        </LinearLayout>
+            android:layout_height="64dp" />
 
         <TextClock
+            android:id="@+id/dreamDate"
+            android:shadowColor="#B3000000"
+            android:shadowRadius="10"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:layout_marginTop="4dp"
-            android:format12Hour="@string/date_format"
-            android:format24Hour="@string/date_format"
-            android:textColor="#8CFFFFFF"
-            android:textSize="18sp"
-            android:fontFamily="@font/outfit_regular"
+            android:layout_marginTop="8dp"
+            android:format12Hour="@string/date_format_home"
+            android:format24Hour="@string/date_format_home"
+            android:textColor="#B3FFFFFF"
+            android:textSize="12sp"
             android:letterSpacing="0.14"
-            android:textAllCaps="true" />
+            android:textAllCaps="true"
+            android:fontFamily="@font/outfit_regular" />
     </LinearLayout>
 </FrameLayout>

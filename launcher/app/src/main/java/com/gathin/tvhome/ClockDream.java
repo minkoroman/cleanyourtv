@@ -3,8 +3,8 @@ package com.gathin.tvhome;
 import android.service.dreams.DreamService;
 
 /**
- * Screensaver: the launcher's thin clock and date on black, over a slow ambient glow (ClockScene).
- * No network, no images: cheap enough for a 1 GB TV.
+ * Screensaver: stills from the continue-watching row with a split-flap clock (ClockScene), or the clock on black
+ * when there are none.
  */
 public class ClockDream extends DreamService {
 
@@ -15,7 +15,7 @@ public class ClockDream extends DreamService {
         super.onAttachedToWindow();
         setInteractive(false);   // any key wakes the TV back to where it was
         setFullscreen(true);
-        setScreenBright(false);
+        setScreenBright(true);   // changing stills need no dimming against burn-in
         setContentView(R.layout.dream_clock);
         scene = new ClockScene(getWindow().getDecorView());
     }

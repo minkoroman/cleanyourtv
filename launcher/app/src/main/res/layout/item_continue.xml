@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One continue-watching card: the still on top, then a caption block of fixed height (title, meta, progress), so
+     nothing below the row can be overlapped whatever the title's length. Sizes are set in ContinueAdapter. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent"
+    android:layout_marginEnd="14dp"
+    android:orientation="vertical"
+    android:gravity="bottom"
+    android:focusable="true"
+    android:clipChildren="false">
+
+    <FrameLayout
+        android:id="@+id/continueCard"
+        android:layout_width="170dp"
+        android:layout_height="96dp">
+
+        <ImageView
+            android:id="@+id/continueArt"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:importantForAccessibility="no" />
+
+        <TextView
+            android:id="@+id/continuePlaceholder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="bottom|start"
+            android:padding="8dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp"
+            android:fontFamily="@font/outfit_medium" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/continueCaption"
+        android:layout_width="170dp"
+        android:layout_height="@dimen/continue_caption_height"
+        android:layout_marginTop="6dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/continueTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textSize="13sp"
+            android:fontFamily="@font/outfit_medium" />
+
+        <TextView
+            android:id="@+id/continueMeta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textSize="11sp"
+            android:fontFamily="@font/outfit_regular" />
+
+        <FrameLayout
+            android:id="@+id/continueTrack"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="4dp">
+
+            <View
+                android:id="@+id/continueProgress"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+    </LinearLayout>
+</LinearLayout>
