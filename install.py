@@ -25,6 +25,7 @@ import json
 import os
 import re
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -324,16 +325,39 @@ def debloat(host, folder, packages, props):
 
 # ---- 5. лаунчер і місто ---------------------------------------------------------------------------------
 
+def download(url, path=None):
+    """HTTPS that works on a Mac too: python.org's Python there has no CA certificates of its own, so take them
+    from certifi (installed into tools/venv on first use), and fall back to the system curl."""
+    try:
+        try:
+            import certifi
+        except ImportError:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check", "certifi"])
+            import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        req = urllib.request.Request(url, headers={"User-Agent": "sun-home-installer"})
+        with urllib.request.urlopen(req, timeout=60, context=ctx) as r:
+            data = r.read()
+    except Exception as e:   # no pip/network for certifi, or SSL still refused: let curl try
+        say(f"(завантаження через Python не вдалося: {type(e).__name__}; пробую curl)")
+        out = subprocess.run(["curl", "-fsSL", "-A", "sun-home-installer", url], capture_output=True)
+        if out.returncode != 0:
+            sys.exit("Не вдалося завантажити " + url + ": " + out.stderr.decode(errors="replace").strip())
+        data = out.stdout
+    if path:
+        with open(path, "wb") as f:
+            f.write(data)
+    return data
+
+
 def launcher_apk(apk_arg):
     if apk_arg:
         return os.path.abspath(apk_arg)
     say("Завантажую лаунчер з останнього релізу на GitHub…")
-    with urllib.request.urlopen(urllib.request.Request(RELEASES, headers={"User-Agent": "sun-home-installer"}),
-                                timeout=20) as r:
-        release = json.load(r)
+    release = json.loads(download(RELEASES))
     asset = next(a for a in release["assets"] if a["name"].endswith(".apk"))
     path = os.path.join(tempfile.gettempdir(), asset["name"])
-    urllib.request.urlretrieve(asset["browser_download_url"], path)
+    download(asset["browser_download_url"], path)
     say(f"Лаунчер {release.get('tag_name', '')}: {asset['name']}")
     return path
 
