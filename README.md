@@ -85,22 +85,6 @@ TV_HOST=192.168.1.50 tools/restore.sh backups/ERGOGS-20261021-1414/debloat.txt c
   `"sun_lat"` і `"sun_lon"` (див. [themes/](themes/)). Зверни увагу: тема без цих ключів повертає Київ.
 - **Шпалери й кольори** — теми з [themes/](themes/), як в оригіналі.
 
-## «Продовжити перегляд» і чому там немає Netflix
-
-Ряд показує незавершене з UAFix Player: історію з його сервера синхронізації і кадри з TMDB. Для цього
-лаунчер треба зібрати самому з ключами в `launcher/local.properties` (файл не потрапляє в git):
-
-```
-uafix.syncCode=XXXXXXXXXXXX
-tmdb.token=<TMDB API Read Access Token>
-```
-
-Без ключів ряд просто не показується, решта працює.
-
-Netflix, YouTube, MEGOGO, Apple TV та інші кладуть свій «Продовжити перегляд» у системний ряд Watch Next,
-але Android 11+ віддає ці записи лише системному лаунчеру з дозволом `ACCESS_ALL_EPG_DATA` (його не видати
-через ADB — див. `TvProvider.java` в AOSP). Тож сторонній лаунчер без root їх не бачить.
-
 ## Зібрати лаунчер з коду
 
 JDK 17 і Android SDK 34, далі `TV_HOST=<ip ТВ> launcher/build-and-install.sh` (Windows:
