@@ -211,18 +211,36 @@ final class Config {
         }
     }
 
+    /** Svitlo strip: the Poltavaoblenergo queue ("2.2") from config.json's outage_queue; null hides the strip. */
+    static String outageQueue(String json) {
+        if (json == null) return null;
+        try {
+            Object q = new JSONObject(json).opt("outage_queue");
+            return q instanceof String && ((String) q).matches("[1-6]\\.[12]") ? (String) q : null;
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    static String outageQueueOf(Context ctx) {
+        return outageQueue(readConfigJson(ctx));
+    }
+
+    private static String readConfigJson(Context ctx) {
+        File dir = dir(ctx);
+        File f = dir == null ? null : new File(dir, FILE_NAME);
+        if (f == null || !f.isFile()) return null;
+        try {
+            return new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
     static double[] sunCoords(Context ctx) {
         double[] fallback = {Double.parseDouble(ctx.getString(R.string.sun_lat)),
                 Double.parseDouble(ctx.getString(R.string.sun_lon))};
-        File dir = dir(ctx);
-        File f = dir == null ? null : new File(dir, FILE_NAME);
-        if (f == null || !f.isFile()) return fallback;
-        try {
-            return sunCoords(new String(java.nio.file.Files.readAllBytes(f.toPath()),
-                    java.nio.charset.StandardCharsets.UTF_8), fallback);
-        } catch (java.io.IOException e) {
-            return fallback;
-        }
+        return sunCoords(readConfigJson(ctx), fallback);
     }
 
     static File dir(Context ctx) {

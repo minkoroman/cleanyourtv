@@ -107,4 +107,15 @@
     <string name="signal_good">Добрий сигнал</string>
     <string name="signal_fair">Середній сигнал</string>
     <string name="signal_weak">Слабкий сигнал</string>
+    <!-- Svitlo strip -->
+    <string name="outage_on_until">Світло є · до %s</string>
+    <string name="outage_on_until_tomorrow">Світло є · до завтра %s</string>
+    <string name="outage_on_rest">Світло є · сьогодні більше без відключень</string>
+    <string name="outage_off_until">Без світла · до %s</string>
+    <string name="outage_off_until_tomorrow">Без світла · до завтра %s</string>
+    <string name="outage_none">Відключень сьогодні не заплановано</string>
+    <string name="outage_no_data">Черга %s: графіка на сьогодні немає</string>
+    <string name="outage_tomorrow_count">\u0020· завтра: %d</string>
+    <string name="outage_tomorrow_none">\u0020· завтра без відключень</string>
+    <string name="outage_as_of">\u0020· станом на %s</string>
 </resources>

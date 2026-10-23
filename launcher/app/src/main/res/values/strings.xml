@@ -128,4 +128,15 @@
     <string name="signal_good">Good signal</string>
     <string name="signal_fair">Fair signal</string>
     <string name="signal_weak">Weak signal</string>
+    <!-- Svitlo strip -->
+    <string name="outage_on_until">Power on · until %s</string>
+    <string name="outage_on_until_tomorrow">Power on · until tomorrow %s</string>
+    <string name="outage_on_rest">Power on · no more outages today</string>
+    <string name="outage_off_until">Power off · until %s</string>
+    <string name="outage_off_until_tomorrow">Power off · until tomorrow %s</string>
+    <string name="outage_none">No outages planned today</string>
+    <string name="outage_no_data">Queue %s: no schedule for today</string>
+    <string name="outage_tomorrow_count">\u0020· tomorrow: %d</string>
+    <string name="outage_tomorrow_none">\u0020· tomorrow: none</string>
+    <string name="outage_as_of">\u0020· as of %s</string>
 </resources>

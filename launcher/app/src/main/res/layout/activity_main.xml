@@ -351,6 +351,36 @@
                     android:drawableStart="@drawable/ic_settings" />
             </LinearLayout>
 
+            <!-- Svitlo strip: today's outage schedule for the queue in config.json (outage_queue), under the
+                 buttons so the header keeps its height. Gone without a queue. -->
+            <LinearLayout
+                android:id="@+id/outageBlock"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/topButtons"
+                android:layout_alignStart="@id/topButtons"
+                android:layout_alignEnd="@id/topButtons"
+                android:layout_marginTop="8dp"
+                android:layout_marginStart="10dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/outageStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/outfit_medium" />
+
+                <com.gathin.tvhome.OutageBar
+                    android:id="@+id/outageBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
         </RelativeLayout>
 
         <!-- Sun Home: tabs and the continue-watching row. Each part has a fixed height (ContinueAdapter), so the

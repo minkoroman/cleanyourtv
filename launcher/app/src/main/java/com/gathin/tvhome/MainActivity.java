@@ -1,5 +1,7 @@
 package com.gathin.tvhome;
 
+import java.time.format.DateTimeFormatter;
+import java.time.LocalTime;
 import android.view.ViewTreeObserver;
 import java.net.Inet4Address;
 import android.net.LinkAddress;
@@ -190,6 +192,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** The dock tile the shelf returns to on Down. */
     private int lastDock;
     private TextView btnTheme, btnSleep;
+    /** Svitlo strip: null queue hides it. */
+    private String outageQueue;
+    private OutageRepository outageRepo;
+    private OutageRepository.Snapshot outageSnapshot;
     private String vpnApp;
     private SpringAnimation springX, springY;
     private float glassTargetX, glassTargetY;
@@ -324,6 +330,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             sky.update();
             wallpaperPlayer.update();
             updateTheme(true);
+            renderOutage();
             handler.postDelayed(this, MINUTE_MS);
         }
     };
@@ -704,6 +711,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
         updateTheme(false);
         if (continueRepo != null) continueRepo.load(this::onContinueLoaded);
+        if (outageRepo != null) outageRepo.load(snapshot -> {
+            outageSnapshot = snapshot;
+            renderOutage();
+        });
         if (rebuildOnResume) {
             tilesReady = false;
             reloadApps(true);
@@ -1582,6 +1593,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             styleRoundButton(findViewById(id), p, dark);
         }
         for (TextView tab : tabs) styleTab(tab, p, dark);
+        renderOutage();
         adapter.setNameColor(dark ? 0xFFFFFFFF : Palette.DAY.text);   // two values: no rebind per animation frame
         continueAdapter.setPalette(p);
     }
@@ -1604,6 +1616,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             });
             tabs[i].setOnKeyListener((v, keyCode, e) -> e.getAction() == KeyEvent.ACTION_DOWN && tabKey(tab, keyCode));
         }
+        outageQueue = Config.outageQueueOf(this);
+        if (outageQueue != null) outageRepo = new OutageRepository(this);
         continueRepo = new ContinueRepository(this);
         continueAdapter = new ContinueAdapter(this, continueRepo, new ContinueAdapter.Listener() {
             @Override public void onCardClicked(ContinueItem item) {
@@ -1636,6 +1650,49 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         continueItems = items;
         showTab(activeTab);
         showShelf(!grid.hasFocus() || lastFocused < COLUMNS, -1);
+    }
+
+    /** The strip under the buttons: state and until when, tomorrow's count, and how old the copy is. */
+    private void renderOutage() {
+        View block = findViewById(R.id.outageBlock);
+        if (block == null || outageQueue == null || outageSnapshot == null) return;
+        LocalDateTime now = LocalDateTime.now();
+        OutageStatus st = OutageStatus.at(outageSnapshot.days, outageQueue, now.toLocalDate(), now.toLocalTime());
+        TextView text = findViewById(R.id.outageStatus);
+        OutageBar bar = findViewById(R.id.outageBar);
+        block.setVisibility(View.VISIBLE);
+        if (st == null) {
+            text.setText(getString(R.string.outage_no_data, outageQueue));
+            bar.setVisibility(View.GONE);
+            return;
+        }
+        bar.setVisibility(View.VISIBLE);
+        String main;
+        if (st.noOutages) main = getString(R.string.outage_none);
+        else if (st.until == null) main = getString(R.string.outage_on_rest);
+        else {
+            String at = st.until.equals(LocalTime.MIDNIGHT) && !st.untilTomorrow ? "24:00" : st.until.toString();
+            main = getString(st.off ? (st.untilTomorrow ? R.string.outage_off_until_tomorrow : R.string.outage_off_until)
+                    : (st.untilTomorrow ? R.string.outage_on_until_tomorrow : R.string.outage_on_until), at);
+        }
+        StringBuilder extra = new StringBuilder();
+        if (st.tomorrowKnown && !st.untilTomorrow) {
+            extra.append(st.tomorrowOutages == 0 ? getString(R.string.outage_tomorrow_none)
+                    : getString(R.string.outage_tomorrow_count, st.tomorrowOutages));
+        }
+        long age = System.currentTimeMillis() - outageSnapshot.fetchedAt;
+        if (outageSnapshot.fetchedAt > 0 && age > 60 * 60 * 1000L) {
+            extra.append(getString(R.string.outage_as_of, DateTimeFormatter.ofPattern("HH:mm")
+                    .format(java.time.Instant.ofEpochMilli(outageSnapshot.fetchedAt).atZone(ZoneId.systemDefault()))));
+        }
+        SpannableString line = new SpannableString(main + extra);
+        int mainColor = st.off ? 0xFFFF6B6B : palette.text;
+        line.setSpan(new ForegroundColorSpan(mainColor), 0, main.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        line.setSpan(new ForegroundColorSpan(palette.textMuted), main.length(), line.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        text.setText(line);
+        bar.set(st.today, now.getHour() * 2 + now.getMinute() / 30);
+        bar.setDark(palette.isDark());
     }
 
     private static boolean sameKeys(List<ContinueItem> a, List<ContinueItem> b) {
