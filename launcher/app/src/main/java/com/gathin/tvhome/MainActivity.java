@@ -1628,9 +1628,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void onContinueLoaded(List<ContinueItem> items) {
+        // A different list (a title watched, or taken off the row in uafix): start the row from its first card.
+        if (!sameKeys(continueItems, items) && !continueRow.hasFocus()) {
+            lastCard = 0;
+            continueRow.scrollToPosition(0);
+        }
         continueItems = items;
         showTab(activeTab);
         showShelf(!grid.hasFocus() || lastFocused < COLUMNS, -1);
+    }
+
+    private static boolean sameKeys(List<ContinueItem> a, List<ContinueItem> b) {
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            if (!a.get(i).key.equals(b.get(i).key)) return false;
+        }
+        return true;
     }
 
     void showTab(int tab) {

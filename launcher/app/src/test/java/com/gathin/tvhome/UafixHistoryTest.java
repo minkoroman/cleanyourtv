@@ -55,6 +55,24 @@ public class UafixHistoryTest {
         assertTrue(UafixHistory.parse(json).get(0).series);
     }
 
+    @Test public void parse_dropsWhatHistoryClearedRemoved() {
+        String json = "{\"history_cleared\":500,\"history\":["
+                + "{\"url\":\"https://uafix.net/films/old/\",\"title\":\"Old\",\"pos\":1,\"dur\":100,\"ts\":400},"
+                + "{\"url\":\"https://uafix.net/films/new/\",\"title\":\"New\",\"pos\":1,\"dur\":100,\"ts\":600}]}";
+        List<ContinueItem> l = UafixHistory.parse(json);
+        assertEquals(1, l.size());
+        assertEquals("New", l.get(0).title);
+    }
+
+    @Test public void parse_keepsPageUrl() {
+        assertEquals("https://uafix.net/films/deadpool-2/", UafixHistory.parse(FIXTURE).get(0).url);
+    }
+
+    @Test public void openLink_resumesThePage() {
+        assertEquals("uafix://open?url=https%3A%2F%2Fuafix.net%2Ffilms%2Fdeadpool-2%2F&play=1",
+                UafixHistory.openLink("https://uafix.net/films/deadpool-2/"));
+    }
+
     @Test public void parse_garbage_returnsEmpty() {
         assertTrue(UafixHistory.parse("<html>").isEmpty());
         assertTrue(UafixHistory.parse(null).isEmpty());

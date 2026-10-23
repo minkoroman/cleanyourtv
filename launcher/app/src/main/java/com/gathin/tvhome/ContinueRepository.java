@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -41,7 +42,10 @@ final class ContinueRepository {
 
     static final String UAFIX_PACKAGE = "net.uafix.uafix_tv";
     private static final String SYNC_URL = "https://uafix-sync.uafix-35038b.workers.dev/v1/sync/";
-    private static final long REFRESH_MS = 15 * 60 * 1000L;
+    /** uafix may have just changed the history (a title watched or taken off the row): ask on every return to
+     *  Home, only not twice within this gap, and once more a little later, as uafix uploads after a moment. */
+    private static final long MIN_GAP_MS = 30_000L;
+    private static final long FOLLOW_UP_MS = 20_000L;
     private static final int TIMEOUT_MS = 8000;
     private static final int ROW_LIMIT = 12;
     private static final String TAG = "TvHome/Continue";
@@ -75,22 +79,36 @@ final class ContinueRepository {
     }
 
     /** Delivers the cached row at once, then again after a refresh when one is due. */
+    static boolean refreshDue(long now, long lastFetch) {
+        return now - lastFetch >= MIN_GAP_MS;
+    }
+
+    /** Delivers the cached row at once, then again after a refresh when one is due, and after a follow-up. */
     void load(Consumer<List<ContinueItem>> onMain) {
         worker.execute(() -> {
             deliver(onMain, buildRow());
-            String code = BuildConfig.UAFIX_SYNC_CODE;
-            long last = prefs.getLong("uafix_fetched", 0);
-            if (code.isEmpty() || System.currentTimeMillis() - last < REFRESH_MS) return;
-            try {
-                String body = get(SYNC_URL + code, false);
-                if (UafixHistory.parse(body).isEmpty() && !body.contains("\"history\"")) return;
-                Files.write(historyFile.toPath(), body.getBytes(StandardCharsets.UTF_8));
-                prefs.edit().putLong("uafix_fetched", System.currentTimeMillis()).apply();
-                deliver(onMain, buildRow());
-            } catch (IOException e) {
-                Log.i(TAG, "uafix refresh failed, keeping the cache: " + e);
-            }
+            if (BuildConfig.UAFIX_SYNC_CODE.isEmpty()
+                    || !refreshDue(System.currentTimeMillis(), prefs.getLong("uafix_fetched", 0))) return;
+            fetch(onMain);
+            main.postDelayed(() -> worker.execute(() -> fetch(onMain)), FOLLOW_UP_MS);
         });
+    }
+
+    /** Runs on the worker. */
+    private void fetch(Consumer<List<ContinueItem>> onMain) {
+        try {
+            String body = get(SYNC_URL + BuildConfig.UAFIX_SYNC_CODE, false);
+            if (UafixHistory.parse(body).isEmpty() && !body.contains("\"history\"")) return;
+            prefs.edit().putLong("uafix_fetched", System.currentTimeMillis()).apply();
+            String before = historyFile.exists()
+                    ? new String(Files.readAllBytes(historyFile.toPath()), StandardCharsets.UTF_8) : "";
+            if (body.equals(before)) return;   // nothing changed: no rebind of the row
+            Files.write(historyFile.toPath(), body.getBytes(StandardCharsets.UTF_8));
+            Log.i(TAG, "uafix history updated");
+            deliver(onMain, buildRow());
+        } catch (IOException e) {
+            Log.i(TAG, "uafix refresh failed, keeping the cache: " + e);
+        }
     }
 
     /** The card's artwork decoded for widthPx: the TMDB backdrop if one exists, else the source's own image. */
@@ -124,8 +142,13 @@ final class ContinueRepository {
                 Log.i(TAG, "cannot read the cached history: " + e);
             }
         }
-        Intent open = context.getPackageManager().getLaunchIntentForPackage(UAFIX_PACKAGE);
-        for (ContinueItem item : uafix) item.launch = open;
+        Intent app = context.getPackageManager().getLaunchIntentForPackage(UAFIX_PACKAGE);
+        for (ContinueItem item : uafix) {
+            // uafix 1.6.2+ opens the title itself and resumes it; an older uafix just opens.
+            Intent link = new Intent(Intent.ACTION_VIEW, Uri.parse(UafixHistory.openLink(item.url)))
+                    .setPackage(UAFIX_PACKAGE);
+            item.launch = link.resolveActivity(context.getPackageManager()) != null ? link : app;
+        }
         return ContinueMerge.merge(uafix, WatchNextSource.read(context), ROW_LIMIT);
     }
 

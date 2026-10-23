@@ -18,6 +18,8 @@ final class ContinueItem {
     long ts;
     /** Stable identity across refreshes and sources: "uafix:<page url>", "wn:<package>:<title>". */
     String key;
+    /** uafix: the title's page on the site, for its uafix://open link; null for other sources. */
+    String url;
     /** What OK opens; filled in by the source, null in tests. */
     Intent launch;
 }
